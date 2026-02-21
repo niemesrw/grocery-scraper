@@ -335,10 +335,10 @@ def main(batch_size=10):
 
                 # Wait for content
                 try:
-                    page.wait_for_selector("text=UPC:", timeout=12_000)
+                    page.wait_for_selector("text=UPC:", timeout=20_000)
                 except Exception:
                     try:
-                        page.wait_for_selector("text=Item Details", timeout=5_000)
+                        page.wait_for_selector("text=Item Details", timeout=10_000)
                     except Exception:
                         human_wait(page, 4, 7)
 
