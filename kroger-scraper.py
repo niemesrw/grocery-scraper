@@ -9,28 +9,6 @@ from playwright.sync_api import sync_playwright
 OUTPUT_FILE = Path(__file__).parent / "kroger-purchases.json"
 URLS_FILE = Path(__file__).parent / "kroger-order-urls.json"
 
-SKIP_PREFIXES = [
-    "Skip", "Shop", "Save", "Pickup & ", "Services", "Pharmacy",
-    "Search", "RYAN", "Digital", "Weekly", "Buy ", "Boost",
-    "New Arrival", "Meal", "Store Locator", "Breadcrumbs", "Home",
-    "Purchase", "Receipt", "Print", "Order Number", "Order Date",
-    "Order Type", "Order Total", "Loyalty", "Kroger", "624 ",
-    "Terrace", "Rewards", "Total Savings", "Original", "Fulfillment",
-    "Tip ", "Sales Tax", "Item Coupons", "Milford", "824 Main",
-    "Sign", "Cart", "Department", "My ", "Fuel Points", "Points",
-    "Copyright", "Privacy", "Terms", "Accessibility", "Contact",
-    "ABOUT", "HELP", "LEARN", "SERVICES", "QUICK", "OUR CREDIT",
-    "GET THE", "All Contents", "Financial", "HIPAA", "TLC",
-    "About the", "Shop Store", "Zero Hunger", "Community", "Careers",
-    "Request a", "Vendors", "Newsroom", "Customer", "FAQs",
-    "Find a", "Freshness", "Recall", "Loyalty Card", "Boost Mem",
-    "Fuel Points", "Grocery", "Delivery Providers", "Find Your",
-    "Custom Cakes", "Party", "SNAP", "Shop All", "Clip Digital",
-    "Start Your", "Shop Recipes", "Explore Easy", "Schedule",
-    "Apply Now", "Healthcare", "Money Services", "Gift Cards",
-    "Item Details", "There was a problem",
-]
-
 
 def human_wait(page, min_s=3, max_s=7):
     """Wait a random human-like duration."""
@@ -74,112 +52,25 @@ def extract_order_urls(page):
     return orders
 
 
-def _parse_item_block(block, upc=""):
-    """Parse a single item block into {name, quantity, price, upc} or None."""
-    lines = [l.strip() for l in block.strip().split("\n") if l.strip()]
-    if not lines:
-        return None
-
-    name = ""
-    price = 0.0
-    quantity = 1
-
-    for line in lines:
-        price_m = re.match(r"^\$([\d,.]+)$", line)
-        if price_m and not name:
-            continue
-        if price_m and name:
-            price = float(price_m[1].replace(",", ""))
-            continue
-
-        qty_m = re.match(r"^([\d.]+)\s*(?:lbs\s*)?x\s*\$", line)
-        if qty_m:
-            q = float(qty_m[1])
-            quantity = int(q) if q == int(q) else q
-            continue
-
-        if line.startswith("Item Coupon"):
-            continue
-
-        if any(line.startswith(s) for s in SKIP_PREFIXES):
-            continue
-
-        if re.match(r"^\d+\s+Items?$", line):
-            continue
-
-        if len(line) > 3 and not name:
-            name = line
-
-    if name and price > 0:
-        item = {"name": name, "quantity": quantity, "price": price}
-        if upc:
-            item["upc"] = upc
-        return item
-    return None
-
-
-def parse_receipt(text):
-    """Parse items from receipt page text."""
-    if "problem loading the receipt" in text.lower():
-        return None  # Receipt not available for this order
-
-    order_num_m = re.search(r"Order Number:\s*(\d+)", text)
-    order_number = order_num_m[1] if order_num_m else ""
-
-    order_type_m = re.search(r"Order Type:\s*(\S+)", text)
-    order_type = order_type_m[1] if order_type_m else ""
-
-    order_date_m = re.search(r"Order Date:\s*(.+)", text)
-    order_date = order_date_m[1].strip() if order_date_m else ""
-
-    order_total_m = re.search(r"Order Total\s*\$([\d,.]+)", text)
-    order_total = order_total_m[1] if order_total_m else ""
-
-    savings_m = re.search(r"Total Savings:\s*\$([\d,.]+)", text)
-    savings = savings_m[1] if savings_m else "0"
-
-    item_section = text.split("Item Details")[-1] if "Item Details" in text else text
-
-    items = []
-
-    # Strategy 1: Split on UPC markers, capturing the UPC values
-    if "UPC:" in item_section:
-        upc_values = re.findall(r"UPC:\s*(\d+)", item_section)
-        upc_blocks = re.split(r"UPC:\s*\d+", item_section)
-        for i, block in enumerate(upc_blocks[:-1]):
-            upc = upc_values[i] if i < len(upc_values) else ""
-            item = _parse_item_block(block, upc=upc)
-            if item:
-                items.append(item)
-
-    # Strategy 2: Price-line splitting
-    if not items:
-        lines = [l.strip() for l in item_section.split("\n") if l.strip()]
-        current_block = []
-        for line in lines:
-            current_block.append(line)
-            if re.match(r"^\$[\d,.]+$", line):
-                item = _parse_item_block("\n".join(current_block))
-                if item:
-                    items.append(item)
-                current_block = []
-            elif re.match(r"^[\d.]+\s*(?:lbs\s*)?x\s*\$", line):
-                item = _parse_item_block("\n".join(current_block))
-                if item:
-                    if items and items[-1]["name"] == item["name"]:
-                        items[-1] = item
-                    else:
-                        items.append(item)
-                current_block = []
-
-    return {
-        "orderNumber": order_number,
-        "orderType": order_type,
-        "orderDate": order_date,
-        "orderTotal": order_total,
-        "totalSavings": savings,
-        "items": items,
-    }
+EXTRACT_ITEMS_JS = """
+() => {
+    const descs = [...document.querySelectorAll('[data-testid="cart-page-item-description"]')];
+    return descs.map(el => {
+        const container = el.closest('li, article') || el.parentElement.parentElement.parentElement.parentElement;
+        const link = container.querySelector('a[href*="/p/"]');
+        const upcMatch = link?.href?.match(/(\\d{13})$/);
+        const text = container.innerText || '';
+        const paidMatch = text.match(/Paid:\\s*\\$?([\\d.]+)/);
+        const receivedMatch = text.match(/Received:\\s*(\\d+)/);
+        return {
+            name: el.innerText.trim(),
+            upc: upcMatch?.[1] || '',
+            price: paidMatch ? parseFloat(paidMatch[1]) : 0,
+            quantity: receivedMatch ? parseInt(receivedMatch[1]) : 1
+        };
+    }).filter(i => i.name && i.price > 0);
+}
+"""
 
 
 def load_existing():
@@ -325,76 +216,47 @@ def main(batch_size=10):
             browser.close()
             return
 
-        # Scrape one batch
+        # Scrape one batch using detail pages (structured DOM extraction)
         scraped_this_run = 0
         for order in remaining:
             if scraped_this_run >= batch_size:
                 break
 
             try:
-                # Navigate to receipt like clicking a link
-                human_wait(page, 5, 10)
-                page.goto(order["receipt_url"], wait_until="domcontentloaded")
+                human_wait(page, 10, 20)
+                page.goto(order["url"], wait_until="domcontentloaded")
 
-                # Wait for receipt content to render (JS-heavy page)
+                # Wait for item elements to render
                 try:
-                    page.wait_for_selector("text=UPC:", timeout=30_000)
+                    page.wait_for_selector(
+                        '[data-testid="cart-page-item-description"]',
+                        timeout=30_000,
+                    )
                 except Exception:
-                    try:
-                        page.wait_for_selector("text=Item Details", timeout=15_000)
-                    except Exception:
-                        # Last resort: just wait and hope it loads
-                        human_wait(page, 8, 12)
+                    human_wait(page, 5, 8)
 
-                # Read the page like a human
+                # Scroll to load all items (lazy-loaded)
+                human_scroll(page)
                 human_wait(page, 2, 4)
                 human_scroll(page)
-                human_wait(page, 2, 3)
+                human_wait(page, 1, 3)
 
-                text = page.inner_text("body")
+                # Extract items via JS DOM query
+                items = page.evaluate(EXTRACT_ITEMS_JS)
 
-                # Check for blocks
-                if "unable to retrieve" in text.lower():
-                    print(f"  BLOCKED by Kroger. Stopping this run.", flush=True)
-                    break
-
-                receipt = parse_receipt(text)
-
-                if receipt is None:
-                    # Receipt unavailable (old order)
-                    result = {
-                        "url": order["url"],
-                        "type": order["type"],
-                        "date": order["date"],
-                        "total": order["total"],
-                        "orderNumber": "",
-                        "orderType": order["type"],
-                        "orderDate": order["date"],
-                        "orderTotal": order["total"],
-                        "totalSavings": "0",
-                        "items": [],
-                        "receiptUnavailable": True,
-                    }
-                    results.append(result)
-                    print(
-                        f"  {order['date']} {order['type']}: "
-                        f"receipt unavailable, ${order['total']}",
-                        flush=True,
-                    )
-                else:
-                    result = {
-                        "url": order["url"],
-                        "type": order["type"],
-                        "date": order["date"],
-                        "total": order["total"],
-                        **receipt,
-                    }
-                    results.append(result)
-                    print(
-                        f"  {order['date']} {order['type']}: "
-                        f"{len(receipt['items'])} items, ${order['total']}",
-                        flush=True,
-                    )
+                result = {
+                    "url": order["url"],
+                    "type": order["type"],
+                    "date": order["date"],
+                    "total": order["total"],
+                    "items": items,
+                }
+                results.append(result)
+                print(
+                    f"  {order['date']} {order['type']}: "
+                    f"{len(items)} items, ${order['total']}",
+                    flush=True,
+                )
 
                 scraped_this_run += 1
 
