@@ -104,6 +104,9 @@ def _parse_item_block(block, upc=""):
         if any(line.startswith(s) for s in SKIP_PREFIXES):
             continue
 
+        if re.match(r"^\d+\s+Items?$", line):
+            continue
+
         if len(line) > 3 and not name:
             name = line
 
@@ -333,14 +336,15 @@ def main(batch_size=10):
                 human_wait(page, 5, 10)
                 page.goto(order["receipt_url"], wait_until="domcontentloaded")
 
-                # Wait for content
+                # Wait for receipt content to render (JS-heavy page)
                 try:
-                    page.wait_for_selector("text=UPC:", timeout=20_000)
+                    page.wait_for_selector("text=UPC:", timeout=30_000)
                 except Exception:
                     try:
-                        page.wait_for_selector("text=Item Details", timeout=10_000)
+                        page.wait_for_selector("text=Item Details", timeout=15_000)
                     except Exception:
-                        human_wait(page, 4, 7)
+                        # Last resort: just wait and hope it loads
+                        human_wait(page, 8, 12)
 
                 # Read the page like a human
                 human_wait(page, 2, 4)
