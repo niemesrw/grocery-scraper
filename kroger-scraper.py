@@ -32,7 +32,7 @@ SKIP_PREFIXES = [
 ]
 
 
-def human_wait(page, min_s=2, max_s=5):
+def human_wait(page, min_s=3, max_s=7):
     """Wait a random human-like duration."""
     ms = int(random.uniform(min_s, max_s) * 1000)
     page.wait_for_timeout(ms)
@@ -265,18 +265,18 @@ def main(batch_size=10):
 
         if not all_orders:
             # Browse to purchase history like a human would
-            human_wait(page, 2, 4)
+            human_wait(page, 3, 6)
             print("Navigating to purchase history...", flush=True)
             page.goto("https://www.kroger.com/mypurchases", wait_until="domcontentloaded")
-            human_wait(page, 3, 6)
+            human_wait(page, 4, 8)
             human_scroll(page)
 
             for pg in range(1, 100):
                 if pg > 1:
                     # Human-like pause before navigating to next page
-                    human_wait(page, 3, 7)
+                    human_wait(page, 4, 9)
                     human_scroll(page)
-                    human_wait(page, 1, 3)
+                    human_wait(page, 2, 4)
                     page.goto(
                         f"https://www.kroger.com/mypurchases?tab=purchases&page={pg}",
                         wait_until="domcontentloaded",
@@ -286,10 +286,10 @@ def main(batch_size=10):
                         'a[href*="/mypurchases/detail/"]', timeout=20_000
                     )
                 except Exception:
-                    human_wait(page, 2, 4)
-                human_wait(page, 2, 5)
+                    human_wait(page, 3, 6)
+                human_wait(page, 3, 7)
                 human_scroll(page)
-                human_wait(page, 1, 3)
+                human_wait(page, 2, 4)
 
                 orders = extract_order_urls(page)
                 if not orders:
@@ -299,7 +299,7 @@ def main(batch_size=10):
                     f"  Page {pg}: {len(orders)} orders (total: {len(all_orders)})",
                     flush=True,
                 )
-                human_wait(page, 1, 3)
+                human_wait(page, 2, 4)
 
             # Only cache if we got a reasonable number (avoid saving partial lists)
             if len(all_orders) >= 200:
@@ -330,7 +330,7 @@ def main(batch_size=10):
 
             try:
                 # Navigate to receipt like clicking a link
-                human_wait(page, 3, 8)
+                human_wait(page, 5, 10)
                 page.goto(order["receipt_url"], wait_until="domcontentloaded")
 
                 # Wait for content
@@ -340,12 +340,12 @@ def main(batch_size=10):
                     try:
                         page.wait_for_selector("text=Item Details", timeout=5_000)
                     except Exception:
-                        human_wait(page, 3, 5)
+                        human_wait(page, 4, 7)
 
                 # Read the page like a human
-                human_wait(page, 1, 3)
+                human_wait(page, 2, 4)
                 human_scroll(page)
-                human_wait(page, 1, 2)
+                human_wait(page, 2, 3)
 
                 text = page.inner_text("body")
 
