@@ -1,6 +1,8 @@
 # grocery-scraper
 
-Scrapes Kroger purchase history including item UPCs for use with [pantry-agent](https://github.com/BLANXLAIT/pantry-agent).
+Scrapes Kroger purchase history including item UPCs. Use with [krocli](https://github.com/BLANXLAIT/krocli) to search products and check prices, or load into [Open Brain](https://github.com/niemesrw/openbrain) as shopping pattern data for AI agents.
+
+Part of the [agents](https://github.com/niemesrw/agents) ecosystem.
 
 ## Setup
 
@@ -73,6 +75,25 @@ Two strategies for extracting items from receipt text:
 
 Cached list of order URLs to avoid re-scraping the purchase history pages. Delete this file to force a fresh URL collection.
 
-## Integration with pantry-agent
+## Using with krocli
 
-The `upc` field from scraped items maps directly to the `add_to_cart` MCP tool's `upc` parameter (13-digit), enabling direct cart adds without searching by product name.
+[krocli](https://github.com/BLANXLAIT/krocli) provides a CLI and hosted OAuth proxy for the Kroger API. Use it to search products, check current prices, and add items to your cart — all via simple `curl` commands or as a Claude Code skill.
+
+The `upc` field from scraped items can be used with krocli's product search to get exact matches:
+
+```bash
+# Get a token
+TOKEN=$(curl -s -X POST https://us-central1-krocli.cloudfunctions.net/tokenClient | jq -r .access_token)
+
+# Search by product name
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.kroger.com/v1/products?filter.term=a2+milk+whole&filter.limit=3"
+```
+
+This is the recommended approach for AI agents — use CLI tools via `Bash` rather than building custom MCP servers for every API.
+
+## Using with Open Brain
+
+Load your purchase history into [Open Brain](https://github.com/niemesrw/openbrain) as shopping pattern data. The [agents](https://github.com/niemesrw/agents) repo includes a `load-grocery-history` script that analyzes purchase frequency and captures weekly/regular/occasional item patterns as semantic memories.
+
+Agents can then search Open Brain for "what do I usually buy" instead of re-parsing the raw JSON every run.
