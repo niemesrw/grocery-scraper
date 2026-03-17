@@ -11,11 +11,10 @@ Kroger purchase history scraper. Outputs JSON with item names, prices, quantitie
 
 ## Key patterns
 
-- Receipt pages are at `/mypurchases/image/{id}` (not `/detail/{id}`).
-- Items are delimited by `UPC: <digits>` on receipt pages. The text block _before_ each UPC marker contains that item's name/price/quantity.
-- Older receipts may lack UPC markers — fallback parser splits on price lines but won't have UPCs.
-- `SKIP_PREFIXES` filters out navigation chrome, footer text, and store-specific strings from receipt text.
-- Kroger will block scraping if requests are too fast. The scraper uses randomized delays (2-8s) and human-like scrolling.
+- Detail pages at `/mypurchases/detail/{id}` are the reliable data source. Receipt pages (`/mypurchases/image/{id}`) are unreliable and should not be used.
+- Items are extracted from detail page DOM using `[data-testid="cart-page-item-description"]` selectors. UPCs come from product link URLs (`a[href*="/p/"]`).
+- Kroger blocks Playwright/Puppeteer automation. Use the Chrome plugin with iframe-based scraping instead (see `skills/kroger-scraper/` or `SCRAPING-NOTES.md`).
+- Kroger will block scraping if requests are too fast. Use randomized delays (3-8s between orders).
 
 ## Running
 
